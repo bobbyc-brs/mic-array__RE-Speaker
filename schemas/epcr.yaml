@@ -1,0 +1,948 @@
+form_name: ePCR — Electronic Patient Care Report
+form_version: "1.0"
+description: >
+  Ontario paramedic Electronic Patient Care Report (BR SEPCR).
+  Fields are tagged by source so the AI client knows which to attempt from audio:
+    conversation — extractable from what people say
+    scan         — populated by health card / drivers licence scanner (not AI)
+    vitals       — measured values entered by paramedic (not AI)
+    derived      — computed from other fields (e.g. age from DOB)
+    paramedic    — observed/documented by paramedic, may be spoken aloud
+
+# ── Sections ─────────────────────────────────────────────────────────────────
+sections:
+  - id: dispatch
+    label: Dispatch / Call Info
+  - id: demographics
+    label: Patient Demographics
+  - id: clinical_info
+    label: Clinical Information
+  - id: past_history
+    label: Relevant Past History
+  - id: medications
+    label: Medications
+  - id: allergies
+    label: Allergies
+  - id: treatment_prior
+    label: Treatment Prior to Arrival
+  - id: cardiac_arrest
+    label: Cardiac Arrest Information
+  - id: physical_exam
+    label: Physical Examination
+  - id: treatments
+    label: Clinical Treatments / Procedures
+  - id: disposition
+    label: Disposition & Outcome
+
+# ── Fields ────────────────────────────────────────────────────────────────────
+fields:
+
+  # ── Dispatch / Call Info ───────────────────────────────────────────────────
+
+  - key: service_name
+    label: Service Name
+    section: dispatch
+    type: text
+    source: scan
+    form_id: null
+    required: false
+    priority: 15
+
+  - key: service_no
+    label: Service No
+    section: dispatch
+    type: text
+    source: scan
+    form_id: null
+    required: false
+    priority: 15
+
+  - key: cacc_acs
+    label: CACC/ACS
+    section: dispatch
+    type: text
+    source: scan
+    form_id: null
+    required: false
+    priority: 15
+
+  - key: call_no
+    label: Call No
+    section: dispatch
+    type: text
+    source: scan
+    form_id: null
+    required: false
+    priority: 15
+
+  - key: call_date
+    label: Call Date
+    section: dispatch
+    type: date
+    source: derived
+    form_id: null
+    required: true
+    priority: 20
+
+  # ── Demographics ───────────────────────────────────────────────────────────
+
+  - key: last_name
+    label: Last Name
+    section: demographics
+    type: text
+    source: scan
+    form_id: lastname
+    form_datatype: healthcard
+    required: true
+    priority: 40
+    synonyms: [last name, surname, family name]
+    prompt_if_missing: What is the patient's last name?
+
+  - key: first_name
+    label: First Name
+    section: demographics
+    type: text
+    source: scan
+    form_id: firstname
+    form_datatype: healthcard
+    required: true
+    priority: 40
+    synonyms: [first name, given name, called]
+    prompt_if_missing: What is the patient's first name?
+
+  - key: date_of_birth
+    label: Date of Birth
+    section: demographics
+    type: date
+    source: scan
+    form_id: birthdate
+    form_datatype: healthcard
+    required: true
+    priority: 40
+    synonyms: [date of birth, born, birthday, DOB]
+    prompt_if_missing: What is the patient's date of birth?
+
+  - key: age
+    label: Age
+    section: demographics
+    type: number
+    source: derived
+    form_id: age
+    required: true
+    priority: 50
+    synonyms: [age, years old, year old]
+    prompt_if_missing: How old is the patient?
+
+  - key: sex
+    label: Sex
+    section: demographics
+    type: radio
+    options: [Male, Female, Other]
+    source: scan
+    form_id: gender
+    form_datatype: healthcard
+    required: true
+    priority: 35
+    synonyms: [male, female, gender, sex, he, she, they]
+    prompt_if_missing: What is the patient's sex?
+
+  - key: weight_kg
+    label: Weight (kg)
+    section: demographics
+    type: number
+    source: conversation
+    form_id: null
+    required: false
+    priority: 45
+    synonyms: [weight, kilograms, kg, pounds, lbs, weighs]
+    prompt_if_missing: Do you know the patient's weight?
+    prompt_if_conflict: Can you confirm the patient's weight in kilograms?
+
+  - key: health_insurance_no
+    label: Health Insurance Number
+    section: demographics
+    type: text
+    source: scan
+    form_id: healthcardno
+    form_datatype: healthcard
+    required: false
+    priority: 25
+
+  - key: health_insurance_version
+    label: Health Card Version
+    section: demographics
+    type: text
+    source: scan
+    form_id: healthcard_version
+    form_datatype: healthcard
+    required: false
+    priority: 20
+
+  - key: street_name
+    label: Street Address
+    section: demographics
+    type: text
+    source: scan
+    form_id: street_name
+    form_datatype: driving_license
+    required: false
+    priority: 20
+
+  - key: address_city
+    label: City / Town
+    section: demographics
+    type: text
+    source: scan
+    form_id: address_city
+    form_datatype: driving_license
+    required: false
+    priority: 20
+
+  - key: address_province
+    label: Province
+    section: demographics
+    type: text
+    source: scan
+    form_id: address_province
+    form_datatype: driving_license
+    required: false
+    priority: 15
+
+  - key: address_postalcode
+    label: Postal Code
+    section: demographics
+    type: text
+    source: scan
+    form_id: address_postalcode
+    form_datatype: driving_license
+    required: false
+    priority: 15
+
+  # ── Clinical Information ───────────────────────────────────────────────────
+
+  - key: date_of_occurrence
+    label: Date of Occurrence
+    section: clinical_info
+    type: date
+    source: derived
+    form_id: null
+    required: true
+    priority: 25
+
+  - key: time_of_occurrence
+    label: Time of Occurrence
+    section: clinical_info
+    type: time
+    source: conversation
+    form_id: null
+    required: true
+    priority: 55
+    synonyms: [time, when, o'clock, am, pm, morning, afternoon, evening, night, started, began, onset]
+    prompt_if_missing: What time did this occur or when did symptoms start?
+    prompt_if_conflict: Can you confirm the time of occurrence?
+
+  - key: chief_complaint
+    label: Chief Complaint
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: chief_complain
+    form_datatype: chief_complain
+    required: true
+    priority: 85
+    synonyms: [complaint, problem, issue, reason, why, hurt, pain, trouble, emergency, called, happened]
+    prompt_if_missing: What is the patient's main complaint today?
+    prompt_if_conflict: Can you clarify the primary complaint?
+
+  - key: frei_positive
+    label: Positive for FREI
+    section: clinical_info
+    type: boolean
+    source: paramedic
+    form_id: formCheck-1
+    required: false
+    priority: 30
+    synonyms: [FREI, fire, rescue, emergency indicator]
+
+  - key: incident_history
+    label: Incident History
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: incident_report
+    form_datatype: incident_report
+    required: true
+    priority: 80
+    synonyms: [history, happened, occurred, incident, story, situation, events, found, scene]
+    prompt_if_missing: Can you describe what happened leading up to this call?
+    prompt_if_conflict: Can you clarify the sequence of events?
+
+  - key: dnr_confirmation_no
+    label: MOHLTC DNR Confirmation Number
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: null
+    required: false
+    priority: 60
+    synonyms: [DNR, do not resuscitate, confirmation number, MOHLTC]
+    prompt_if_missing: Is there a DNR in place? Do you have the confirmation number?
+    optional: true
+    unlock_keywords: [DNR, do not resuscitate, advanced directive]
+
+  - key: trauma_location
+    label: Trauma Problem — Location
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: null
+    required: false
+    priority: 55
+    synonyms: [where, location, site, area, body part]
+    optional: true
+    unlock_keywords: [trauma, injury, wound, fracture, laceration, burn, struck, fell, crash, collision]
+    prompt_if_missing: Where on the body is the trauma located?
+
+  - key: trauma_type
+    label: Trauma Problem — Type
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: null
+    required: false
+    priority: 55
+    synonyms: [type, kind, injury type]
+    optional: true
+    unlock_keywords: [trauma, injury, wound, fracture, laceration, burn, struck, fell, crash, collision]
+    prompt_if_missing: What type of trauma is present?
+
+  - key: trauma_mechanism
+    label: Trauma Problem — Mechanism
+    section: clinical_info
+    type: text
+    source: conversation
+    form_id: null
+    required: false
+    priority: 55
+    synonyms: [how, mechanism, caused, fell, struck, crash, collision, stabbed, shot]
+    optional: true
+    unlock_keywords: [trauma, injury, wound, fracture, laceration, burn, struck, fell, crash, collision]
+    prompt_if_missing: What was the mechanism of injury?
+    prompt_if_conflict: Can you describe how the injury occurred?
+
+  # ── Relevant Past History ──────────────────────────────────────────────────
+
+  - key: history_provided_by
+    label: History Provided By
+    section: past_history
+    type: radio
+    options: [Patient, Other]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 30
+    synonyms: [provided by, told us, says, reports, states, bystander, family, witness]
+
+  - key: relevant_past_history
+    label: Relevant Past History
+    section: past_history
+    type: text
+    source: conversation
+    form_id: id_relevent_past_history
+    form_datatype: relevent_past_history
+    required: true
+    priority: 72
+    synonyms: [history, medical history, past, previously, condition, chronic, diagnosed, surgery]
+    prompt_if_missing: Is there any relevant medical history?
+    prompt_if_conflict: Can you clarify the patient's past medical history?
+
+  - key: past_history_flags
+    label: Past History Conditions
+    section: past_history
+    type: multicheck
+    options:
+      - Previously Healthy
+      - Cardiac
+      - Respiratory
+      - Stroke/TIA
+      - Hypertension
+      - Seizure
+      - Diabetes
+      - Psychiatric
+      - Anaphylaxis
+      - Cancer
+      - CNO
+      - Other
+    source: conversation
+    form_id: null
+    required: false
+    priority: 68
+    synonyms: [heart, cardiac, lungs, breathing, stroke, TIA, blood pressure, hypertension, seizure, epilepsy,
+               diabetic, diabetes, insulin, psychiatric, mental health, anaphylaxis, severe allergy, cancer, unknown]
+    prompt_if_missing: Does the patient have any significant past medical conditions?
+
+  # ── Medications ────────────────────────────────────────────────────────────
+
+  - key: medications_text
+    label: Medications (details)
+    section: medications
+    type: text
+    source: conversation
+    form_id: medication_details
+    form_datatype: meds
+    required: true
+    priority: 70
+    synonyms: [medication, medicine, taking, prescription, drug, pill, tablet, dose, inhaler]
+    prompt_if_missing: Is the patient taking any medications?
+    prompt_if_conflict: Can you confirm the current medications?
+
+  - key: medication_flags
+    label: Medication Categories
+    section: medications
+    type: multicheck
+    options:
+      - None
+      - CNO
+      - Nitrates
+      - ASA
+      - Insulin/Oral Diabetic Meds
+      - Blood thinner/Anticoagulants
+      - Phosphodiesterase
+      - Salbutamol
+      - Furosemide
+    source: conversation
+    form_id: null
+    required: false
+    priority: 65
+    synonyms: [nitroglycerin, nitrates, aspirin, ASA, insulin, metformin, warfarin, Coumadin, eliquis, blood thinner,
+               anticoagulant, Viagra, sildenafil, Ventolin, salbutamol, Lasix, furosemide, water pill]
+    prompt_if_missing: Is the patient on any nitrates, blood thinners, or diabetic medications?
+
+  # ── Allergies ──────────────────────────────────────────────────────────────
+
+  - key: allergies_text
+    label: Allergies (details)
+    section: allergies
+    type: text
+    source: conversation
+    form_id: allergies-details
+    form_datatype: Allergies
+    required: true
+    priority: 88
+    synonyms: [allergy, allergic, allergies, reaction, anaphylaxis, intolerance, sensitive to]
+    prompt_if_missing: Does the patient have any known allergies?
+    prompt_if_conflict: Can you clarify the allergy information?
+
+  - key: allergy_status
+    label: Allergy Status
+    section: allergies
+    type: radio
+    options: [NKA, CNO, Other]
+    source: conversation
+    form_id: null
+    required: true
+    priority: 85
+    synonyms: [no known allergies, NKA, could not obtain, CNO, no allergies, none]
+    prompt_if_missing: Does the patient have any allergies, or is that unknown?
+
+  # ── Treatment Prior to Arrival ─────────────────────────────────────────────
+
+  - key: treatment_prior_text
+    label: Treatment Prior to Arrival (details)
+    section: treatment_prior
+    type: text
+    source: conversation
+    form_id: id_treatment_prior_to_arrival
+    form_datatype: treatment_prior_to_arrival
+    required: false
+    priority: 58
+    synonyms: [before we arrived, prior, already treated, first aid, bystander CPR, given, administered]
+    prompt_if_missing: Was any treatment given before paramedics arrived?
+
+  - key: treatment_prior_flags
+    label: Prior Treatment By
+    section: treatment_prior
+    type: multicheck
+    options:
+      - None
+      - Midwife
+      - EFRT
+      - OtherParamedic
+      - Physician
+      - Nurse
+      - Fire
+      - Police
+      - Bystander
+      - Self
+      - CNO
+      - Other
+    source: conversation
+    form_id: null
+    required: false
+    priority: 52
+    synonyms: [fire department, police, nurse, doctor, physician, bystander, CPR, first aid, self-treated,
+               midwife, paramedic on scene, EFRT, emergency first responder]
+
+  # ── Cardiac Arrest Information ─────────────────────────────────────────────
+
+  - key: arrest_witnessed_by
+    label: Arrest Witnessed By
+    section: cardiac_arrest
+    type: radio
+    options: [Bystander, Trained Responder, Paramedic, Unwitnessed]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 90
+    optional: true
+    unlock_keywords: [cardiac arrest, arrest, collapsed, unresponsive, no pulse, CPR, resuscitation, code]
+    synonyms: [witnessed, saw, found, unwitnessed, bystander saw, collapsed in front of]
+    prompt_if_missing: Was the cardiac arrest witnessed? By whom?
+
+  - key: arrest_date
+    label: Arrest Date
+    section: cardiac_arrest
+    type: date
+    source: conversation
+    form_id: null
+    required: false
+    priority: 80
+    optional: true
+    unlock_keywords: [cardiac arrest, arrest, collapsed, unresponsive, no pulse, CPR]
+
+  - key: arrest_time
+    label: Arrest Time
+    section: cardiac_arrest
+    type: time
+    source: conversation
+    form_id: null
+    required: false
+    priority: 80
+    optional: true
+    unlock_keywords: [cardiac arrest, arrest, collapsed, unresponsive, no pulse, CPR]
+    synonyms: [time of arrest, when did they collapse, went down at, found at]
+    prompt_if_missing: What time did the arrest occur?
+
+  - key: cpr_started_by
+    label: CPR Started By
+    section: cardiac_arrest
+    type: radio
+    options: [Bystander, Trained Responder, Paramedic, None]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 88
+    optional: true
+    unlock_keywords: [cardiac arrest, arrest, CPR, compressions, resuscitation]
+    synonyms: [CPR, compressions, started CPR, doing CPR, who started]
+    prompt_if_missing: Was CPR started? By whom?
+
+  - key: cpr_start_time
+    label: CPR Start Time
+    section: cardiac_arrest
+    type: time
+    source: conversation
+    form_id: null
+    required: false
+    priority: 82
+    optional: true
+    unlock_keywords: [cardiac arrest, CPR, compressions]
+    synonyms: [CPR started at, compressions started, began CPR]
+    prompt_if_missing: What time was CPR started?
+
+  - key: first_shock_by
+    label: First Shock By
+    section: cardiac_arrest
+    type: radio
+    options: [Bystander, Trained Responder, Paramedic]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 75
+    optional: true
+    unlock_keywords: [AED, defibrillator, shocked, shock delivered, defib]
+    synonyms: [AED, defibrillated, shocked, first shock, who used the AED]
+    prompt_if_missing: Was a shock delivered? By whom?
+
+  - key: first_shock_time
+    label: First Shock Time
+    section: cardiac_arrest
+    type: time
+    source: conversation
+    form_id: null
+    required: false
+    priority: 70
+    optional: true
+    unlock_keywords: [AED, defibrillator, shocked, defib]
+
+  # ── Physical Examination ───────────────────────────────────────────────────
+
+  - key: general_appearance
+    label: General Appearance
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_other_general_appearance
+    form_datatype: general_appearance
+    required: true
+    priority: 62
+    synonyms: [appears, looks, general condition, appearance, conscious, alert, distressed, pale, diaphoretic]
+    prompt_if_missing: How does the patient appear generally?
+
+  - key: skin_color
+    label: Skin Color
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_skin_color_general_appearance
+    form_datatype: general_appearance
+    required: false
+    priority: 55
+    synonyms: [skin color, pallor, pale, flushed, cyanotic, jaundiced, skin colour]
+    prompt_if_missing: What is the patient's skin color?
+
+  - key: skin_condition
+    label: Skin Condition
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_skin_condition_general_appearance
+    form_datatype: general_appearance
+    required: false
+    priority: 55
+    synonyms: [skin condition, diaphoretic, sweaty, moist, dry, clammy, warm, cool, hot]
+    prompt_if_missing: What is the condition of the patient's skin?
+
+  - key: head_neck
+    label: Head / Neck
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_headneck_general_appearance
+    form_datatype: general_appearance
+    required: false
+    priority: 50
+    synonyms: [head, neck, trachea, JVD, jugular, airway, midline, deviated, swelling, stiff neck]
+
+  - key: trachea_position
+    label: Trachea Position
+    section: physical_exam
+    type: radio
+    options: [Midline, Shifted Right, Shifted Left]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 48
+    synonyms: [trachea, airway, deviated, midline, shifted, deviation]
+
+  - key: jvd
+    label: JVD (Jugular Venous Distension)
+    section: physical_exam
+    type: radio
+    options: [Elevated, Not Elevated]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 48
+    synonyms: [JVD, jugular, neck veins, distended, elevated]
+
+  - key: chest
+    label: Chest
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_chest_general_appearance
+    form_datatype: general_appearance
+    required: false
+    priority: 58
+    synonyms: [chest, breath sounds, lungs, air entry, breathing, bilateral, wheezes, crackles]
+
+  - key: chest_air_entry
+    label: Air Entry
+    section: physical_exam
+    type: radio
+    options: [Bilateral, Decreased Right, Decreased Left]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 55
+    synonyms: [air entry, equal, bilateral, decreased, absent]
+
+  - key: breath_sounds
+    label: Breath Sounds
+    section: physical_exam
+    type: multicheck
+    options: [Clear, Wheezes, Crackles, Rub, Absent]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 55
+    synonyms: [breath sounds, clear, wheezes, wheeze, crackles, rales, rub, absent, no sounds]
+    prompt_if_missing: What are the breath sounds?
+
+  - key: abdomen
+    label: Abdomen
+    section: physical_exam
+    type: text
+    source: paramedic
+    form_id: id_abdomen_general_appearance
+    form_datatype: general_appearance
+    required: false
+    priority: 50
+    synonyms: [abdomen, belly, stomach, tender, soft, rigid, distended, mass, pulsatile]
+
+  - key: abdomen_flags
+    label: Abdominal Findings
+    section: physical_exam
+    type: multicheck
+    options: [Soft, Rigid, Distended, Tender, Mass, Pulsatile]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 48
+    synonyms: [soft, rigid, board-like, distended, tender, mass, pulsatile, guarding]
+
+  - key: abdomen_quadrant
+    label: Abdominal Quadrant
+    section: physical_exam
+    type: multicheck
+    options: [RU, LU, RL, LL, Center]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 45
+    synonyms: [right upper, left upper, right lower, left lower, central, midline, epigastric]
+
+  - key: back_pelvis
+    label: Back / Pelvis
+    section: physical_exam
+    type: radio
+    options: [Unremarkable, Abnormal]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 42
+    synonyms: [back, spine, pelvis, unremarkable, normal, tenderness, instability]
+
+  - key: extremities
+    label: Extremities
+    section: physical_exam
+    type: radio
+    options: [Unremarkable, Abnormal]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 42
+    synonyms: [extremities, arms, legs, limbs, unremarkable, normal]
+
+  - key: peripheral_edema
+    label: Peripheral Edema
+    section: physical_exam
+    type: radio
+    options: [Absent, Present]
+    source: paramedic
+    form_id: null
+    required: false
+    priority: 42
+    synonyms: [edema, swelling, swollen, pitting, ankles, feet, legs]
+
+  # ── Clinical Treatments / Procedures ──────────────────────────────────────
+  # Table field — each row is one intervention or set of vitals.
+
+  - key: clinical_treatments
+    label: Clinical Treatments / Procedures
+    section: treatments
+    type: table
+    source: paramedic
+    form_id: clinical_treatment
+    form_datatype: clinical_treatments
+    required: false
+    priority: 60
+    row_fields:
+      - key: time
+        label: Time
+        type: time
+      - key: proc_code
+        label: Procedure Code
+        type: text
+      - key: dose_unit
+        label: Dose / Unit
+        type: text
+        synonyms: [dose, mg, mcg, ml, units, given, administered]
+      - key: route
+        label: Route
+        type: text
+        synonyms: [IV, IM, SubQ, PO, oral, intravenous, intramuscular, inhaled, nebulized]
+      - key: pulse_rate
+        label: Pulse Rate
+        type: number
+        synonyms: [pulse, heart rate, HR, bpm]
+      - key: resp_rate
+        label: Respiratory Rate
+        type: number
+        synonyms: [respirations, RR, breathing rate, breaths per minute]
+      - key: bp_systolic
+        label: Blood Pressure (Systolic)
+        type: number
+        synonyms: [blood pressure, BP, systolic, over]
+      - key: temp
+        label: Temperature
+        type: number
+        synonyms: [temperature, temp, febrile, afebrile, degrees]
+      - key: read_code
+        label: Read Code
+        type: text
+      - key: spo2
+        label: SpO2
+        type: number
+        synonyms: [oxygen saturation, SpO2, sats, O2 sat, percent]
+      - key: etco2
+        label: EtCO2
+        type: number
+        synonyms: [EtCO2, end-tidal CO2, capnography]
+      - key: gcs
+        label: GCS
+        type: number
+        synonyms: [GCS, Glasgow, level of consciousness, LOC]
+      - key: pupils
+        label: Pupils
+        type: text
+        synonyms: [pupils, PERRL, equal, reactive, dilated, constricted, blown]
+      - key: pain_scale
+        label: Pain Scale
+        type: number
+        synonyms: [pain, pain scale, out of ten, pain score, rate your pain]
+      - key: crew_member_no
+        label: Crew Member No
+        type: text
+
+  # ── Disposition & Outcome ──────────────────────────────────────────────────
+
+  - key: remarks
+    label: Remarks
+    section: disposition
+    type: text
+    source: conversation
+    form_id: null
+    required: false
+    priority: 45
+    synonyms: [remarks, notes, additional, anything else, other information]
+    prompt_if_missing: Are there any additional remarks to document?
+
+  - key: disposition_of_effects
+    label: Disposition of Effects
+    section: disposition
+    type: radio
+    options: [Receiving Staff, Family, Other]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 35
+    synonyms: [belongings, effects, property, given to, left with, receiving staff, family, wallet, phone]
+
+  - key: primary_problem
+    label: Primary Problem
+    section: disposition
+    type: text
+    source: conversation
+    form_id: primary_problem
+    required: true
+    priority: 75
+    synonyms: [diagnosis, problem, impression, working diagnosis, presenting as]
+    prompt_if_missing: What is the primary problem or working diagnosis?
+    prompt_if_conflict: Can you confirm the primary problem?
+
+  - key: problem_code
+    label: Problem Code
+    section: disposition
+    type: text
+    source: paramedic
+    form_id: problem_code
+    required: false
+    priority: 30
+
+  - key: sp_trans_code
+    label: Special Transport Code
+    section: disposition
+    type: text
+    source: paramedic
+    form_id: sp_trans_code
+    required: false
+    priority: 25
+
+  - key: deceased
+    label: Deceased
+    section: disposition
+    type: radio
+    options: [Obviously Dead, DNR, BHP TOR, Pronounced By Physician]
+    source: conversation
+    form_id: null
+    required: false
+    priority: 95
+    optional: true
+    unlock_keywords: [dead, deceased, died, no pulse, asystole, obvious death, DNR, pronounced,
+                      rigor, lividity, TOR, termination of resuscitation]
+    synonyms: [obvious death, rigor mortis, lividity, decomposition, DNR, termination, pronounced dead]
+    prompt_if_missing: Is the patient deceased? Under what circumstances?
+
+  - key: physician_bhp_name
+    label: Physician / BHP Name
+    section: disposition
+    type: text
+    source: conversation
+    form_id: physician_name
+    required: false
+    priority: 60
+    optional: true
+    unlock_keywords: [DNR, pronounced, BHP, physician, doctor on scene]
+    synonyms: [physician, doctor, BHP, base hospital, name]
+    prompt_if_missing: What is the name of the physician or BHP?
+
+  - key: deceased_date
+    label: Deceased Date
+    section: disposition
+    type: date
+    source: conversation
+    form_id: deceased_date
+    required: false
+    priority: 55
+    optional: true
+    unlock_keywords: [deceased, dead, pronounced, obvious death]
+
+  - key: deceased_time
+    label: Deceased Time
+    section: disposition
+    type: time
+    source: conversation
+    form_id: deceased_time
+    required: false
+    priority: 55
+    optional: true
+    unlock_keywords: [deceased, dead, pronounced, obvious death]
+
+  - key: ctas_arrive_patient
+    label: CTAS — Arrive Patient
+    section: disposition
+    type: text
+    source: vitals
+    form_id: CTAS_arrive_patient
+    required: false
+    priority: 30
+
+  - key: ctas_depart_scene
+    label: CTAS — Depart Scene
+    section: disposition
+    type: text
+    source: vitals
+    form_id: CTAS_depart_scene
+    required: false
+    priority: 30
+
+  - key: ctas_arrive_destination
+    label: CTAS — Arrive Destination
+    section: disposition
+    type: text
+    source: vitals
+    form_id: CTAS_arrive_destination
+    required: false
+    priority: 30
