@@ -144,11 +144,13 @@ class SegmentManager:
         out_q: "queue.Queue[TranscriptionItem]",
         pause_seconds: float,
         max_seconds: float,
+        min_speech_seconds: float = 0.5,
         vad_aggressiveness: int = 2,
     ):
         self._q              = out_q
-        self._pause_frames   = int(pause_seconds * 1000 / VAD_FRAME_MS)
-        self._max_frames     = int(max_seconds   * 1000 / VAD_FRAME_MS)
+        self._pause_frames   = int(pause_seconds      * 1000 / VAD_FRAME_MS)
+        self._max_frames     = int(max_seconds        * 1000 / VAD_FRAME_MS)
+        self._min_speech_frames = int(min_speech_seconds * 1000 / VAD_FRAME_MS)
         self._vad            = webrtcvad.Vad(vad_aggressiveness)
 
         self._speaker: Optional[SpeakerZone] = None
@@ -219,7 +221,12 @@ class SegmentManager:
             last_speech -= 1
 
         if last_speech < 0:
-            # All silence — nothing to transcribe
+            self._reset()
+            return
+
+        # Count actual speech frames (not just total frames up to last speech)
+        speech_frame_count = sum(self._speech_mask[: last_speech + 1])
+        if speech_frame_count < self._min_speech_frames:
             self._reset()
             return
 
@@ -380,6 +387,67 @@ def normalize_result(raw: Dict, next_segment_id: int) -> List[SegmentResult]:
     return out
 
 
+# ── payload compaction ────────────────────────────────────────────────────────
+
+# Thresholds for internal quality gating — segments outside these are discarded
+# before forwarding.  avg_logprob is Whisper's internal log-probability; values
+# below -1.0 typically indicate hallucination or very poor audio.
+AVG_LOGPROB_THRESHOLD  = -1.0
+NO_SPEECH_THRESHOLD    = 0.5
+
+
+def _compact_segment(seg: SegmentResult) -> Optional[Dict]:
+    """
+    Apply quality gates and return a compact segment dict, or None to discard.
+    Strips avg_logprob and no_speech_prob (used for gating only).
+    Word alternatives are collapsed to just confidence — segment-level
+    alternatives are kept in full.
+    """
+    if (seg.no_speech_prob or 0) > NO_SPEECH_THRESHOLD:
+        return None
+    if (seg.avg_logprob or 0) < AVG_LOGPROB_THRESHOLD:
+        return None
+    if not seg.text:
+        return None
+
+    return {
+        "segment_id":   seg.segment_id,
+        "start":        seg.start,
+        "end":          seg.end,
+        "text":         seg.text,
+        "confidence":   seg.confidence,
+        "alternatives": [asdict(a) for a in seg.alternatives],
+        "words": [
+            {
+                "text":       w.text,
+                "start":      w.start,
+                "end":        w.end,
+                "confidence": w.confidence,
+            }
+            for w in seg.words
+        ],
+    }
+
+
+def _build_payload(
+    role: str,
+    wall_start: float,
+    raw: Dict,
+    compact_segments: List[Dict],
+    args: argparse.Namespace,
+    language_changed: bool,
+) -> Dict:
+    return {
+        "event":            "transcript_batch",
+        "session_id":       args.session_id,
+        "speaker_role":     role,
+        "captured_at":      wall_start,
+        "language":         raw.get("language"),
+        "language_changed": language_changed,
+        "segments":         compact_segments,
+    }
+
+
 # ── transcription worker ──────────────────────────────────────────────────────
 
 def _transcription_worker(
@@ -389,9 +457,9 @@ def _transcription_worker(
     args: argparse.Namespace,
 ):
     """Single thread: consumes (zone, audio, wall_start) from the queue."""
-    # Per-speaker offset and segment counters, keyed by role
-    offsets:  Dict[str, float] = {}
-    counters: Dict[str, int]   = {}
+    offsets:   Dict[str, float] = {}
+    counters:  Dict[str, int]   = {}
+    languages: Dict[str, str]   = {}   # last known language per speaker
 
     while True:
         item = in_q.get()
@@ -413,20 +481,25 @@ def _transcription_worker(
         if not segments:
             continue
 
-        payload = {
-            "event":         "transcript_batch",
-            "session_id":    args.session_id,
-            "device_id":     args.device_id,
-            "speaker_role":  role,
-            "doa_center":    zone.center,
-            "captured_at":   wall_start,
-            "language":      raw.get("language"),
-            "language_probs": raw.get("language_probs", {}),
-            "segments":      [asdict(s) for s in segments],
-        }
+        # Detect language switch (internally — full probs are not forwarded)
+        detected = raw.get("language")
+        language_changed = detected != languages.get(role)
+        if language_changed:
+            if role in languages:
+                print(f"[lang] {role}: {languages[role]} → {detected}")
+            languages[role] = detected
+
+        # Quality-gate and compact each segment
+        compact_segs = [c for seg in segments if (c := _compact_segment(seg)) is not None]
+        if not compact_segs:
+            continue
+
+        payload = _build_payload(role, wall_start, raw, compact_segs, args, language_changed)
+
         for seg in segments:
-            print(f"[{seg.start:8.2f}-{seg.end:8.2f}] {role:12s} "
-                  f"conf={seg.confidence!s:>5}  {seg.text}")
+            if seg.text:
+                print(f"[{seg.start:8.2f}-{seg.end:8.2f}] {role:12s} "
+                      f"conf={seg.confidence!s:>5}  {seg.text}")
 
         if args.jsonl:
             with open(args.jsonl, "a", encoding="utf-8") as fh:
@@ -479,6 +552,7 @@ def run(args):
         out_q=tx_queue,
         pause_seconds=args.pause_seconds,
         max_seconds=args.max_segment_seconds,
+        min_speech_seconds=args.min_speech_seconds,
         vad_aggressiveness=args.vad_aggressiveness,
     )
 
@@ -547,6 +621,10 @@ Examples:
     p.add_argument(
         "--max-segment-seconds", type=float, default=DEFAULT_MAX_SECONDS,
         help=f"Hard cap on segment length (default {DEFAULT_MAX_SECONDS}s)",
+    )
+    p.add_argument(
+        "--min-speech-seconds", type=float, default=0.5,
+        help="Minimum speech duration to send to Whisper (default 0.5s); shorter segments are discarded",
     )
     p.add_argument(
         "--vad-aggressiveness", type=int, default=2, choices=[0, 1, 2, 3],
