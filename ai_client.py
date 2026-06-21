@@ -168,6 +168,14 @@ def build_system_prompt(field_index: Dict[str, Dict], schema: Dict) -> str:
         "You are an ePCR (Electronic Patient Care Report) extraction assistant for paramedic use.",
         "Extract structured field values from a spoken conversation between paramedics, patients, and bystanders.",
         "",
+        "SPEAKER LABELS:",
+        "Speakers may be pre-labelled (e.g. 'paramedic', 'patient') or auto-named (e.g. 'speaker_1', 'speaker_2').",
+        "When auto-named, infer each speaker's role from what they say:",
+        "  - A speaker who introduces themselves as a paramedic, asks clinical questions, or gives instructions → 'paramedic'",
+        "  - A speaker describing symptoms, answering questions about their health → 'patient'",
+        "  - A speaker answering on behalf of the patient (family member, bystander) → 'bystander'",
+        "Include a 'speaker_roles' map in your response whenever you can infer roles.",
+        "",
         "RULES:",
         "- Only extract values that are clearly stated or strongly implied.",
         "- Never hallucinate values not supported by the transcript.",
@@ -208,6 +216,7 @@ def build_system_prompt(field_index: Dict[str, Dict], schema: Dict) -> str:
     lines += [
         "RESPONSE FORMAT — return only valid JSON, no markdown fences:",
         "{",
+        '  "speaker_roles": {"speaker_1": "paramedic", "speaker_2": "patient"},',
         '  "fields": {',
         '    "<field_key>": {',
         '      "value": "<extracted value, list for multicheck, null if absent>",',
@@ -244,6 +253,7 @@ class Session:
         }
         self._lock = threading.Lock()
         self.new_since_last_extraction = 0
+        self.speaker_roles: Dict[str, str] = {}  # speaker_N → inferred role
 
     def add_utterances(self, speaker_role: str, captured_at: float, segments: List[Dict]):
         with self._lock:
@@ -315,6 +325,7 @@ class Session:
                 "session_id":      self.session_id,
                 "updated_at":      time.time(),
                 "utterance_count": len(self.utterances),
+                "speaker_roles":   dict(self.speaker_roles),
                 "fields":          {k: dict(v) for k, v in self.fields.items()},
                 "metrics":         self._metrics_locked(),
             }
@@ -409,10 +420,26 @@ def extraction_loop(
             result = extract_fields(session, system_prompt, llm)
             if result is None:
                 continue
-            extracted  = result.get("fields") or {}
-            follow_ups = result.get("follow_up_needed") or []
-            notes      = result.get("notes")
-            changed    = session.update_fields(extracted)
+            extracted     = result.get("fields") or {}
+            follow_ups    = result.get("follow_up_needed") or []
+            notes         = result.get("notes")
+            new_roles     = result.get("speaker_roles") or {}
+            changed       = session.update_fields(extracted)
+
+            # Merge newly inferred speaker roles
+            role_changes = {}
+            with session._lock:
+                for label, role in new_roles.items():
+                    if session.speaker_roles.get(label) != role:
+                        role_changes[label] = role
+                        session.speaker_roles[label] = role
+
+            if role_changes:
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"\n[{ts}] Speaker roles identified:")
+                for label, role in role_changes.items():
+                    print(f"  {label} -> {role}")
+
             if changed:
                 print_changed_fields(changed, session, follow_ups, notes)
                 path = save_form_state(session, output_dir)

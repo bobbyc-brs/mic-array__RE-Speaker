@@ -119,6 +119,76 @@ def resolve_speaker(
     return best
 
 
+class SpeakerTracker:
+    """
+    Discovers speaker zones in real-time from DOA readings during speech.
+
+    When a DOA angle doesn't match any known zone, speech frames at that
+    angle are accumulated. Once MIN_SPEECH_FRAMES consecutive speech frames
+    arrive from the same bucketed angle, a new zone is promoted (speaker_1,
+    speaker_2, …) up to max_speakers.
+
+    Pre-assigned zones (from --speaker flags) are seeded at construction and
+    are never evicted.
+    """
+
+    MIN_SPEECH_FRAMES = 8   # ~240 ms of speech before promoting a new zone
+
+    def __init__(
+        self,
+        tolerance: int,
+        max_speakers: int = 6,
+        preset_zones: Optional[List[SpeakerZone]] = None,
+    ):
+        self.tolerance    = tolerance
+        self.max_speakers = max_speakers
+        self._zones: List[SpeakerZone] = list(preset_zones or [])
+        self._candidates: Dict[int, int] = {}  # bucketed_angle → speech frame count
+        self._lock = threading.Lock()
+
+    def resolve(self, doa: int, is_speech: bool) -> Optional[SpeakerZone]:
+        """
+        Return the zone for this DOA reading.  During speech at an unrecognised
+        angle, accumulate evidence and auto-promote a new zone when ready.
+        """
+        with self._lock:
+            zone = resolve_speaker(doa, self._zones, self.tolerance)
+            if zone:
+                return zone
+
+            if not is_speech or len(self._zones) >= self.max_speakers:
+                return None
+
+            bucket = self._snap(doa)
+            # Confirm the bucket itself isn't too close to an existing zone
+            if resolve_speaker(bucket, self._zones, self.tolerance):
+                return None
+
+            self._candidates[bucket] = self._candidates.get(bucket, 0) + 1
+            if self._candidates[bucket] >= self.MIN_SPEECH_FRAMES:
+                return self._promote(bucket)
+
+            return None
+
+    @property
+    def zones(self) -> List[SpeakerZone]:
+        with self._lock:
+            return list(self._zones)
+
+    def _snap(self, angle: int) -> int:
+        """Bucket angle to reduce DOA noise."""
+        step = max(self.tolerance // 3, 10)
+        return round(angle / step) * step % 360
+
+    def _promote(self, bucket: int) -> SpeakerZone:
+        name = f"speaker_{len(self._zones) + 1}"
+        zone = SpeakerZone(role=name, center=bucket)
+        self._zones.append(zone)
+        self._candidates.pop(bucket, None)
+        print(f"\n[DOA] New speaker: {name} at ~{bucket}°")
+        return zone
+
+
 # ── segment manager ───────────────────────────────────────────────────────────
 
 # Items placed on the transcription queue: (zone, audio_float32, wall_clock_start)
@@ -127,59 +197,48 @@ TranscriptionItem = Tuple[SpeakerZone, np.ndarray, float]
 
 class SegmentManager:
     """
-    Receives raw audio blocks tagged with the current speaker zone.
-    Classifies each 30 ms frame with webrtcvad and emits complete segments
-    to a queue whenever a natural boundary is detected:
+    Receives raw audio blocks + raw DOA angle.  Each 30 ms VAD frame is passed
+    to SpeakerTracker to resolve (or auto-discover) the active speaker zone.
+    Emits complete segments to a queue on natural boundaries:
 
       1. Pause  — silence >= pause_seconds closes the current segment.
-      2. Switch — DOA moves to a different speaker; the in-progress segment
-                  for the old speaker is flushed immediately.
+      2. Switch — DOA moves to a different speaker zone.
       3. Cap    — segment exceeds max_seconds regardless of VAD.
 
-    Trailing silence is trimmed before the segment is enqueued.
+    Trailing silence is trimmed before enqueueing.
     """
 
     def __init__(
         self,
         out_q: "queue.Queue[TranscriptionItem]",
+        tracker: SpeakerTracker,
         pause_seconds: float,
         max_seconds: float,
         min_speech_seconds: float = 0.5,
         vad_aggressiveness: int = 2,
     ):
-        self._q              = out_q
-        self._pause_frames   = int(pause_seconds      * 1000 / VAD_FRAME_MS)
-        self._max_frames     = int(max_seconds        * 1000 / VAD_FRAME_MS)
-        self._min_speech_frames = int(min_speech_seconds * 1000 / VAD_FRAME_MS)
-        self._vad            = webrtcvad.Vad(vad_aggressiveness)
+        self._q                 = out_q
+        self._tracker           = tracker
+        self._pause_frames      = int(pause_seconds       * 1000 / VAD_FRAME_MS)
+        self._max_frames        = int(max_seconds         * 1000 / VAD_FRAME_MS)
+        self._min_speech_frames = int(min_speech_seconds  * 1000 / VAD_FRAME_MS)
+        self._vad               = webrtcvad.Vad(vad_aggressiveness)
 
         self._speaker: Optional[SpeakerZone] = None
-        self._frames: List[bytes]             = []   # 30 ms PCM16 frames
-        self._speech_mask: List[bool]         = []   # True = speech frame
+        self._frames: List[bytes]             = []
+        self._speech_mask: List[bool]         = []
         self._silence_run: int                = 0
-        self._seg_start: float                = 0.0  # wall clock
+        self._seg_start: float                = 0.0
+        self._remainder: bytes                = b""
 
-        # Leftover PCM bytes from a partial frame at the previous callback
-        self._remainder: bytes = b""
-
-    def feed(self, block: np.ndarray, speaker: Optional[SpeakerZone], wall_clock: float):
+    def feed(self, block: np.ndarray, doa: int, wall_clock: float):
         """
-        block   : float32 mono, any length
-        speaker : zone resolved from current DOA, or None for dead-zone audio
+        block : float32 mono, any length
+        doa   : raw DOA angle from XMOS (0-359)
         """
-        # Speaker change → flush whatever we have for the old speaker
-        if speaker != self._speaker:
-            self._flush()
-            self._speaker   = speaker
-            self._seg_start = wall_clock
-
-        if speaker is None:
-            return  # dead zone — discard audio
-
-        # Convert float32 → int16 PCM bytes and prepend any leftover
         pcm = (block * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
         pcm = self._remainder + pcm
-        frame_bytes = VAD_FRAME_SAMPLES * 2  # 2 bytes per int16 sample
+        frame_bytes = VAD_FRAME_SAMPLES * 2
 
         offset = 0
         while offset + frame_bytes <= len(pcm):
@@ -187,6 +246,16 @@ class SegmentManager:
             offset += frame_bytes
 
             is_speech = self._vad.is_speech(frame, SAMPLE_RATE)
+            speaker   = self._tracker.resolve(doa, is_speech)
+
+            if speaker != self._speaker:
+                self._flush()
+                self._speaker   = speaker
+                self._seg_start = wall_clock
+
+            if speaker is None:
+                continue  # dead zone / unrecognised angle
+
             self._frames.append(frame)
             self._speech_mask.append(is_speech)
 
@@ -195,13 +264,11 @@ class SegmentManager:
             else:
                 self._silence_run += 1
 
-            # Flush on pause
             if self._silence_run >= self._pause_frames:
                 self._flush()
                 self._seg_start = wall_clock
                 continue
 
-            # Flush on max duration
             if len(self._frames) >= self._max_frames:
                 self._flush()
                 self._seg_start = wall_clock
@@ -513,14 +580,23 @@ def _transcription_worker(
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def run(args):
-    zones: List[SpeakerZone] = []
-    for spec in args.speaker:
+    preset_zones: List[SpeakerZone] = []
+    for spec in (args.speaker or []):
         m = re.match(r"^([^:]+):(\d+)$", spec.strip())
         if not m:
             raise SystemExit(f"Bad --speaker spec '{spec}'. Expected role:angle, e.g. doctor:0")
-        zones.append(SpeakerZone(role=m.group(1), center=int(m.group(2)) % 360))
+        preset_zones.append(SpeakerZone(role=m.group(1), center=int(m.group(2)) % 360))
 
-    print(f"Speakers:  {', '.join(f'{z.role}@{z.center}°' for z in zones)}")
+    tracker = SpeakerTracker(
+        tolerance=args.tolerance,
+        max_speakers=args.max_speakers,
+        preset_zones=preset_zones,
+    )
+
+    if preset_zones:
+        print(f"Speakers:  {', '.join(f'{z.role}@{z.center}°' for z in preset_zones)} (preset)")
+    else:
+        print(f"Speakers:  auto-discover up to {args.max_speakers} (speak to register)")
     print(f"Tolerance: ±{args.tolerance}°  |  "
           f"Pause: {args.pause_seconds}s  |  "
           f"Max segment: {args.max_segment_seconds}s")
@@ -537,7 +613,7 @@ def run(args):
     if args.rpc_host and args.rpc_port:
         forwarder: Any = RPCForwarder(args.rpc_host, args.rpc_port, args.rpc_method)
     else:
-        forwarder = Forwarder("http://127.0.0.1:8080/api/ingest")
+        forwarder = Forwarder(args.ingest_url)
 
     tx_queue: "queue.Queue[Optional[TranscriptionItem]]" = queue.Queue()
     tx_thread = threading.Thread(
@@ -550,6 +626,7 @@ def run(args):
 
     seg_mgr = SegmentManager(
         out_q=tx_queue,
+        tracker=tracker,
         pause_seconds=args.pause_seconds,
         max_seconds=args.max_segment_seconds,
         min_speech_seconds=args.min_speech_seconds,
@@ -559,9 +636,8 @@ def run(args):
     def audio_callback(indata, frames, time_info, status):
         if status:
             print(f"[audio] {status}", file=sys.stderr)
-        mono    = indata[:, AUDIO_CHANNEL].copy()
-        speaker = resolve_speaker(doa.angle, zones, args.tolerance)
-        seg_mgr.feed(mono, speaker, time.time())
+        mono = indata[:, AUDIO_CHANNEL].copy()
+        seg_mgr.feed(mono, doa.angle, time.time())
 
     try:
         dev_idx = next(
@@ -607,8 +683,13 @@ Examples:
 """,
     )
     p.add_argument(
-        "--speaker", action="append", metavar="ROLE:ANGLE", required=True,
-        help="Speaker as role:angle (degrees 0-359). Repeat for each speaker.",
+        "--speaker", action="append", metavar="ROLE:ANGLE",
+        help="Pre-assign a speaker zone as role:angle (optional; repeat for each). "
+             "If omitted, speakers are auto-discovered and named speaker_1, speaker_2…",
+    )
+    p.add_argument(
+        "--max-speakers", type=int, default=6,
+        help="Maximum number of speakers to auto-discover (default 6)",
     )
     p.add_argument(
         "--tolerance", type=int, default=DEFAULT_TOLERANCE,
@@ -637,6 +718,8 @@ Examples:
     p.add_argument("--language",            default=None,   help="Force language (e.g. en)")
     p.add_argument("--accurate",            action="store_true")
     p.add_argument("--jsonl",               default="transcripts.jsonl")
+    p.add_argument("--ingest-url",          default="http://127.0.0.1:8080/api/ingest",
+                   help="HTTP endpoint to forward transcript batches (default: 127.0.0.1:8080)")
     p.add_argument("--rpc-host",            default=None)
     p.add_argument("--rpc-port",            type=int, default=None)
     p.add_argument("--rpc-method",          default="push_transcript")
