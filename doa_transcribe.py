@@ -515,6 +515,32 @@ def _build_payload(
     }
 
 
+# ── stop-phrase detection ─────────────────────────────────────────────────────
+
+DEFAULT_STOP_PHRASES = [
+    "bye",
+    "okay bye",
+    "ok bye",
+    "we're done",
+    "were done",
+    "we are done",
+    "stop recording",
+    "end session",
+    "that's all",
+    "thats all",
+]
+
+def _normalize_text(s: str) -> str:
+    return re.sub(r"[^\w\s]", "", s.lower()).strip()
+
+def _is_stop_phrase(text: str, stop_phrases: List[str]) -> bool:
+    """True if text is short and contains a stop phrase."""
+    normalized = _normalize_text(text)
+    if len(normalized.split()) > 6:
+        return False
+    return any(phrase in normalized for phrase in stop_phrases)
+
+
 # ── transcription worker ──────────────────────────────────────────────────────
 
 def _transcription_worker(
@@ -522,11 +548,14 @@ def _transcription_worker(
     transcriber: Transcriber,
     forwarder: Any,
     args: argparse.Namespace,
+    stop_event: threading.Event,
 ):
     """Single thread: consumes (zone, audio, wall_start) from the queue."""
     offsets:   Dict[str, float] = {}
     counters:  Dict[str, int]   = {}
     languages: Dict[str, str]   = {}   # last known language per speaker
+
+    stop_phrases = [_normalize_text(p) for p in (args.stop_phrase or DEFAULT_STOP_PHRASES)]
 
     while True:
         item = in_q.get()
@@ -567,6 +596,10 @@ def _transcription_worker(
             if seg.text:
                 print(f"[{seg.start:8.2f}-{seg.end:8.2f}] {role:12s} "
                       f"conf={seg.confidence!s:>5}  {seg.text}")
+                if _is_stop_phrase(seg.text, stop_phrases):
+                    print(f"\n[stop] Phrase detected: \"{seg.text.strip()}\" — ending session.")
+                    stop_event.set()
+                    return
 
         if args.jsonl:
             with open(args.jsonl, "a", encoding="utf-8") as fh:
@@ -618,7 +651,7 @@ def run(args):
     tx_queue: "queue.Queue[Optional[TranscriptionItem]]" = queue.Queue()
     tx_thread = threading.Thread(
         target=_transcription_worker,
-        args=(tx_queue, transcriber, forwarder, args),
+        args=(tx_queue, transcriber, forwarder, args, stop_event),
         daemon=True,
         name="transcriber",
     )
@@ -648,7 +681,8 @@ def run(args):
         raise SystemExit("ReSpeaker audio device not found.")
 
     blocksize = int(SAMPLE_RATE * BLOCK_SECONDS)
-    print("Listening… Press Ctrl+C to stop.\n")
+    stop_words = args.stop_phrase or DEFAULT_STOP_PHRASES
+    print(f"Listening… Press Ctrl+C to stop, or say: {' / '.join(stop_words[:4])}\n")
     with sd.InputStream(
         device=dev_idx,
         samplerate=SAMPLE_RATE,
@@ -718,6 +752,11 @@ Examples:
     p.add_argument("--language",            default=None,   help="Force language (e.g. en)")
     p.add_argument("--accurate",            action="store_true")
     p.add_argument("--jsonl",               default="transcripts.jsonl")
+    p.add_argument(
+        "--stop-phrase", action="append", metavar="PHRASE",
+        help="Spoken phrase that ends the session (repeatable; default: 'bye', "
+             "'okay bye', 'we\\'re done', 'stop recording', …)",
+    )
     p.add_argument("--ingest-url",          default="http://127.0.0.1:8080/api/ingest",
                    help="HTTP endpoint to forward transcript batches (default: 127.0.0.1:8080)")
     p.add_argument("--rpc-host",            default=None)
