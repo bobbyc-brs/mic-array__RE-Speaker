@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Claude Code project memory
+.claude/
+
+# Runtime output
+transcripts.jsonl
+*_epcr.json
+/tmp/
+
+# API keys / secrets
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
