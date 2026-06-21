@@ -92,14 +92,26 @@ python doa_transcribe.py --speaker paramedic:0 --speaker patient:180 --jsonl tra
 
 ### `ai_client.py` — AI-powered ePCR field extraction
 
-Listens for `transcript_batch` events, accumulates conversation context per session, and calls Claude to extract structured field values from `schemas/epcr.yaml`. Updated fields are printed to the screen and written to `<session_id>_epcr.json`.
+Listens for `transcript_batch` events, accumulates conversation context per session, and calls an LLM to extract structured field values from `schemas/epcr.yaml`. Updated fields are printed to the screen and written to `<session_id>_epcr.json`.
+
+Supports three providers — whichever key is present is used automatically:
+
+| Provider | Env var | Key file |
+|---|---|---|
+| Anthropic (Claude) | `$ANTHROPIC_API_KEY` | `AnthropicAPI.key` |
+| Perplexity | `$PERPLEXITY_KEY` | `PerplexityAPI.key` |
+| Cohere | `$COHERE_API_KEY` | `CohereAPI.key` |
 
 ```bash
 # Start the AI client first (default port 8080)
 python ai_client.py
 
+# Explicit provider
+python ai_client.py --provider perplexity
+python ai_client.py --provider cohere
+
 # With options
-python ai_client.py --output-dir /tmp/pcr --debounce 5 --model claude-haiku-4-5-20251001
+python ai_client.py --output-dir /tmp/pcr --debounce 5
 ```
 
 **Key options:**
@@ -109,9 +121,9 @@ python ai_client.py --output-dir /tmp/pcr --debounce 5 --model claude-haiku-4-5-
 | `--port` | 8080 | HTTP listen port |
 | `--schema` | `schemas/epcr.yaml` | Form schema file |
 | `--output-dir` | `.` | Where to write `*_epcr.json` files |
-| `--model` | `claude-haiku-4-5-20251001` | Claude model |
+| `--provider` | auto | `anthropic`, `perplexity`, or `cohere` |
+| `--model` | provider default | Override the provider's default model |
 | `--debounce` | 4s | Seconds between extraction passes |
-| `--api-key` | `$ANTHROPIC_API_KEY` | Anthropic API key |
 
 **Typical two-terminal workflow:**
 
@@ -122,6 +134,47 @@ python ai_client.py --output-dir /tmp/pcr
 # Terminal 2
 python doa_transcribe.py --speaker paramedic:0 --speaker patient:180 --tolerance 60
 ```
+
+---
+
+---
+
+### `tests/` — Offline testing without live audio
+
+Test extraction quality without needing the mic array or a live call.
+
+**Convert a script to JSON:**
+
+Write a plain-text script in `Speaker Name: Text` format, then convert it:
+
+```bash
+python tests/convert_script.py my_script.txt -o tests/conversations/my_case.json
+
+# With explicit role IDs and metadata
+python tests/convert_script.py my_script.txt \
+    --map "Paramedic 1:paramedic_1" \
+    --map "Patient:patient" \
+    --title "Allergic reaction call" \
+    -o tests/conversations/allergic_reaction.json
+```
+
+**Replay against a running ai_client:**
+
+```bash
+# Terminal 1 — start the AI client
+python ai_client.py --provider cohere --output-dir /tmp/pcr
+
+# Terminal 2 — replay a scenario
+python tests/test_replay.py tests/conversations/concussion_assessment.json
+python tests/test_replay.py tests/conversations/chest_pain.json --wait 20
+```
+
+**Bundled scenarios:**
+
+| File | Description |
+|---|---|
+| `conversations/concussion_assessment.json` | Cyclist with retrograde amnesia; cognitive screening, c-collar applied |
+| `conversations/chest_pain.json` | 47F with acute chest pain, prior MI, on warfarin, aspirin given pre-arrival |
 
 ---
 

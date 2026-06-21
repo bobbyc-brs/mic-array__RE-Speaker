@@ -1,0 +1,32 @@
+{
+  "title": "Chest Pain — Cardiac History",
+  "description": "47-year-old female with acute chest pain, prior MI, on warfarin and metoprolol — aspirin given by husband pre-arrival",
+  "utterances": [
+    {"speaker": "paramedic_1", "text": "Hi there, I'm a paramedic. What's going on today?", "offset": 0.0},
+    {"speaker": "patient",     "text": "I have chest pain. It started about two hours ago.", "offset": 5.0},
+    {"speaker": "paramedic_1", "text": "Okay, can you tell me your name and date of birth?", "offset": 10.0},
+    {"speaker": "patient",     "text": "Sarah Chen. March 12th, 1978.", "offset": 15.0},
+    {"speaker": "paramedic_1", "text": "Thanks, Sarah. Can you describe the pain — where is it, and what does it feel like?", "offset": 19.0},
+    {"speaker": "patient",     "text": "It's sharp, on the left side of my chest. It's about a seven out of ten.", "offset": 25.0},
+    {"speaker": "paramedic_1", "text": "Does it go anywhere else — your arm, jaw, back?", "offset": 31.0},
+    {"speaker": "patient",     "text": "A little bit down my left arm.", "offset": 36.0},
+    {"speaker": "paramedic_1", "text": "Any shortness of breath, sweating, or nausea?", "offset": 40.0},
+    {"speaker": "patient",     "text": "Yes, I've been sweating and I feel a bit nauseous.", "offset": 44.0},
+    {"speaker": "paramedic_1", "text": "Do you have any medical history — any past heart problems?", "offset": 49.0},
+    {"speaker": "patient",     "text": "Yes, I had a heart attack two years ago. I also have high blood pressure and type 2 diabetes.", "offset": 54.0},
+    {"speaker": "paramedic_1", "text": "What medications are you on?", "offset": 60.0},
+    {"speaker": "patient",     "text": "Metoprolol and warfarin. I take them every day.", "offset": 63.0},
+    {"speaker": "paramedic_1", "text": "Any allergies to medications?", "offset": 67.0},
+    {"speaker": "patient",     "text": "No, none that I know of.", "offset": 70.0},
+    {"speaker": "paramedic_1", "text": "Did you take anything for the pain before we arrived?", "offset": 73.0},
+    {"speaker": "patient",     "text": "My husband gave me an aspirin about twenty minutes ago.", "offset": 77.0},
+    {"speaker": "paramedic_1", "text": "Good. Any idea how much you weigh?", "offset": 82.0},
+    {"speaker": "patient",     "text": "About 68 kilograms.", "offset": 85.0},
+    {"speaker": "paramedic_1", "text": "I'm going to listen to your chest and check you over now.", "offset": 88.0},
+    {"speaker": "paramedic_1", "text": "Breath sounds are equal bilaterally. Skin is pale and diaphoretic. Heart rate 102, blood pressure 148 over 94.", "offset": 95.0},
+    {"speaker": "paramedic_2", "text": "Twelve-lead is printing now.", "offset": 103.0},
+    {"speaker": "paramedic_1", "text": "Sarah, we're going to start an IV and put you on some oxygen. We'll get you to the hospital quickly.", "offset": 107.0},
+    {"speaker": "patient",     "text": "Is it my heart again?", "offset": 113.0},
+    {"speaker": "paramedic_1", "text": "We're not sure yet, but we're treating this seriously. The ECG will help us understand what's happening. You're in good hands.", "offset": 116.0}
+  ]
+}
