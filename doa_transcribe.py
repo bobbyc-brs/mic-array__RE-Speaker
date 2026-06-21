@@ -255,7 +255,7 @@ class Transcriber:
     def transcribe(self, audio: np.ndarray, offset_seconds: float) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {
             "language":                    self.language,
-            "vad":                         True,
+            "vad":                         False,  # handled upstream by webrtcvad
             "compute_word_confidence":     True,
             "remove_punctuation_from_words": False,
             "condition_on_previous_text":  False,

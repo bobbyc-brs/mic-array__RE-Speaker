@@ -1,0 +1,14 @@
+# ReSpeaker 4 Mic Array — runtime dependencies
+#
+# mic_array.py
+pyusb==1.3.1
+sounddevice==0.5.5
+numpy==2.4.6
+
+# doa_transcribe.py (adds to the above)
+webrtcvad==2.0.10
+whisper-timestamped==1.15.9
+requests                 # HTTP forwarding to backend
+
+# Optional: pyrpc (internal package) for RPC forwarding
+# pyrpc
