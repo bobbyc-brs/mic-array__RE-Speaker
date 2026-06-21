@@ -81,9 +81,17 @@ def _read_key(env: str, file: str) -> Optional[str]:
     return None
 
 
-def resolve_provider() -> Optional[Dict]:
-    """Return first available provider dict (with 'key' added), or None."""
-    for spec in PROVIDERS:
+def resolve_provider(name: Optional[str] = None) -> Optional[Dict]:
+    """Return first available provider dict (with 'key' added), or None.
+    If name is given, only that provider is tried."""
+    candidates = PROVIDERS
+    if name:
+        name_lower = name.lower()
+        candidates = [p for p in PROVIDERS if p["name"].lower() == name_lower]
+        if not candidates:
+            names = ", ".join(p["name"].lower() for p in PROVIDERS)
+            raise SystemExit(f"Unknown provider '{name}'. Choose from: {names}")
+    for spec in candidates:
         key = _read_key(spec["env"], spec["file"])
         if key:
             return {**spec, "key": key}
@@ -481,6 +489,9 @@ Provider key lookup order (env var then file):
                    help="Path to epcr.yaml schema (default: schemas/epcr.yaml)")
     p.add_argument("--output-dir", type=Path, default=Path("."),
                    help="Directory to write <session_id>_epcr.json (default: .)")
+    p.add_argument("--provider",   default=None,
+                   metavar="NAME",
+                   help="Force a specific provider: anthropic, perplexity, cohere (default: auto)")
     p.add_argument("--model",      default=None,
                    help="Override the provider's default model")
     p.add_argument("--debounce",   type=float, default=DEFAULT_DEBOUNCE,
@@ -491,7 +502,7 @@ Provider key lookup order (env var then file):
 def main():
     args = parse_args()
 
-    provider = resolve_provider()
+    provider = resolve_provider(args.provider)
     if provider is None:
         raise SystemExit(
             "No API key found. Provide one of:\n"
