@@ -504,6 +504,12 @@ def main():
 
     provider = resolve_provider(args.provider)
     if provider is None:
+        if args.provider:
+            spec = next(p for p in PROVIDERS if p["name"].lower() == args.provider.lower())
+            raise SystemExit(
+                f"No API key found for {spec['name']}. "
+                f"Set ${spec['env']} or create {spec['file']}."
+            )
         raise SystemExit(
             "No API key found. Provide one of:\n"
             "  $ANTHROPIC_API_KEY  or  AnthropicAPI.key\n"
