@@ -11,7 +11,8 @@ whisper-timestamped==1.15.9
 requests                 # HTTP forwarding to backend
 
 # ai_client.py (adds to the above)
-anthropic>=0.40.0           # Claude API
+anthropic>=0.40.0           # Claude API (Anthropic provider)
+openai>=1.0.0               # OpenAI-compat client (Perplexity, Cohere)
 flask>=3.0.0                # HTTP server for ingest endpoint
 flask-cors>=4.0.0           # CORS headers (optional, for browser clients)
 pyyaml>=6.0                 # epcr.yaml schema loading

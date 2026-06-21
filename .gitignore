@@ -22,6 +22,7 @@ transcripts.jsonl
 # API keys / secrets
 .env
 *.env
+*.key
 
 # macOS
 .DS_Store
