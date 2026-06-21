@@ -64,7 +64,7 @@ PROVIDERS = [
         "file":     "CohereAPI.key",
         "type":     "openai_compat",
         "base_url": "https://api.cohere.com/compatibility/v1",
-        "model":    "command-r-plus",
+        "model":    "command-a-03-2025",
     },
 ]
 
